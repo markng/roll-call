@@ -4,6 +4,7 @@ import os
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
 from models import Base, CheckIn
@@ -14,16 +15,17 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 
-
 class RollCallBot(commands.Bot):
     conn = None
     session = None
+
     def __init__(self):
         super().__init__(
             command_prefix={"!"},
             intents=discord.Intents.all(),
             case_insensitive=True,
         )
+        self.register_commands()
 
     async def on_ready(self):
         self.conn = await engine.connect()
@@ -36,10 +38,21 @@ class RollCallBot(commands.Bot):
         if message.author == self.user:
             return
 
+        await self.process_commands(message)
+
         await self.checkin_from_message(message)
 
-        if message.content.startswith('$roll-call'):
-            await message.channel.send('Users who have responded to the roll call:')
+    def register_commands(self):
+        @self.command(name='last', pass_context=True)
+        async def last(ctx, arg):
+            guild = ctx.guild.id
+            member_ids = map(lambda member: member.id, ctx.message.mentions)
+            # get the last checkin for each member
+            stmt = select(CheckIn).where(CheckIn.guild_id == guild).where(CheckIn.user_id.in_(member_ids)).group_by(
+                CheckIn.user_id).order_by(func.max(CheckIn.at))
+
+            for check_in in await self.conn.execute(stmt):
+                await ctx.send(f'{check_in.user_name} last checked in at {check_in.at}')
 
     async def checkin_from_message(self, message):
         async with self.session_maker.begin() as session:
@@ -53,4 +66,3 @@ class RollCallBot(commands.Bot):
             session.add(check_in)
 
             await session.commit()
-
