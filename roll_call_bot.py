@@ -1,18 +1,12 @@
-import asyncio
-import os
-
 import discord
 from discord.ext import commands
-from dotenv import load_dotenv
+from discord.utils import format_dt
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
 from models import Base, CheckIn
 
 engine = create_async_engine('sqlite+aiosqlite:///roll_call_bot.db', echo=True, future=True)
-
-intents = discord.Intents.default()
-intents.message_content = True
 
 
 class RollCallBot(commands.Bot):
@@ -25,7 +19,7 @@ class RollCallBot(commands.Bot):
             intents=discord.Intents.all(),
             case_insensitive=True,
         )
-        self.register_commands()
+        self.commands()
 
     async def on_ready(self):
         self.conn = await engine.connect()
@@ -42,7 +36,7 @@ class RollCallBot(commands.Bot):
 
         await self.checkin_from_message(message)
 
-    def register_commands(self):
+    def commands(self):
         @self.command(name='last', pass_context=True)
         async def last(ctx, arg):
             guild = ctx.guild.id
@@ -52,7 +46,7 @@ class RollCallBot(commands.Bot):
                 CheckIn.user_id).order_by(func.max(CheckIn.at))
 
             for check_in in await self.conn.execute(stmt):
-                await ctx.send(f'{check_in.user_name} last checked in at {check_in.at}')
+                await ctx.send(f'{check_in.user_name} last checked in at {format_dt(check_in.at)}')
 
     async def checkin_from_message(self, message):
         async with self.session_maker.begin() as session:
