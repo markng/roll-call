@@ -42,9 +42,8 @@ class RollCallBot(commands.Bot):
         async def last(ctx, arg):
             guild = ctx.guild.id
             member_ids = map(lambda member: member.id, ctx.message.mentions)
-            # get the last checkin for each member
             stmt = select(CheckIn).where(CheckIn.guild_id == guild).where(CheckIn.user_id.in_(member_ids)).group_by(
-                CheckIn.user_id).order_by(func.max(CheckIn.at))
+                CheckIn.user_id).order_by(func.max(CheckIn.at))  # this should go in the model.
 
             for check_in in await self.conn.execute(stmt):
                 await ctx.send(f'{check_in.user_name} last checked in {timeago.format(check_in.at)}')
