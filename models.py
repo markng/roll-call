@@ -17,4 +17,4 @@ class CheckIn(Base):
     message_id = Column(Integer)
     channel_id = Column(Integer)
     guild_id = Column(Integer)
-    at = Column(DateTime, default=datetime.utcnow)
+    at = Column(DateTime(timezone=True), default=datetime.now())

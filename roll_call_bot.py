@@ -1,4 +1,5 @@
 import discord
+import timeago
 from discord.ext import commands
 from discord.utils import format_dt
 from sqlalchemy import select, func
@@ -46,7 +47,7 @@ class RollCallBot(commands.Bot):
                 CheckIn.user_id).order_by(func.max(CheckIn.at))
 
             for check_in in await self.conn.execute(stmt):
-                await ctx.send(f'{check_in.user_name} last checked in at {format_dt(check_in.at)}')
+                await ctx.send(f'{check_in.user_name} last checked in {timeago.format(check_in.at)}')
 
     async def checkin_from_message(self, message):
         async with self.session_maker.begin() as session:
