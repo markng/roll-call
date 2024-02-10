@@ -1,13 +1,19 @@
+import os
+from datetime import datetime
+
 import discord
 import timeago
 from discord.ext import commands
-from discord.utils import format_dt
-from sqlalchemy import select, func
+from dotenv import load_dotenv
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
 from models import Base, CheckIn
 
-engine = create_async_engine('sqlite+aiosqlite:///roll_call_bot.db', echo=True, future=True)
+load_dotenv()
+engine = create_async_engine(os.environ['DATABASE_URL'], echo=True)
+
+session_maker = async_sessionmaker(engine)
 
 
 class RollCallBot(commands.Bot):
@@ -24,8 +30,9 @@ class RollCallBot(commands.Bot):
 
     async def on_ready(self):
         self.conn = await engine.connect()
-        self.session_maker = async_sessionmaker(engine, expire_on_commit=False)
         await self.conn.run_sync(Base.metadata.create_all)
+        await self.conn.commit()
+        await self.conn.close()
         print(f'We have logged in as {self.user}')
 
     async def on_message(self, message):
@@ -40,23 +47,36 @@ class RollCallBot(commands.Bot):
     def commands(self):
         @self.command(name='last', pass_context=True)
         async def last(ctx, arg):
-            guild = ctx.guild.id
-            member_ids = map(lambda member: member.id, ctx.message.mentions)
-            stmt = select(CheckIn).where(CheckIn.guild_id == guild).where(CheckIn.user_id.in_(member_ids)).group_by(
-                CheckIn.user_id).order_by(func.max(CheckIn.at))  # this should go in the model.
+            async with (session_maker.begin() as session):
+                guild = ctx.guild.id
+                member_ids = map(lambda member: member.id, ctx.message.mentions)
 
-            for check_in in await self.conn.execute(stmt):
-                await ctx.send(f'{check_in.user_name} last checked in {timeago.format(check_in.at)}')
+                # get latest check in for every member
+                stmt = select(
+                    CheckIn
+                ).filter(
+                    CheckIn.user_id.in_(member_ids)
+                ).order_by(CheckIn.user_id).order_by(
+                    CheckIn.at.desc()
+                ).distinct(
+                    CheckIn.user_id
+                )
+
+                for check_in in await session.execute(stmt):
+                    await ctx.send(
+                        f'{check_in[0].user_name} last checked in {timeago.format(check_in[0].at, datetime.now().astimezone())}')
 
     async def checkin_from_message(self, message):
-        async with self.session_maker.begin() as session:
+        if message.content.startswith('!last'):
+            return
+        async with session_maker() as session:
             check_in = CheckIn(
                 user_id=message.author.id,
                 user_name=message.author.name,
                 message_id=message.id,
                 channel_id=message.channel.id,
-                guild_id=message.guild.id
+                guild_id=message.guild.id,
+
             )
             session.add(check_in)
-
             await session.commit()

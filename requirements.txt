@@ -2,5 +2,8 @@ py-cord
 python-dotenv
 SQLAlchemy
 aiosqlite
+asyncpg
 greenlet
 timeago
+pytest-describe
+pytest
